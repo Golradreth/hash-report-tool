@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Android 13+ utilise explicitement RECEIVER_NOT_EXPORTED dans MainActivity.
+         L'ancienne surcharge sans drapeau reste nécessaire sur Android 8 à 12. -->
+    <issue id="UnspecifiedRegisterReceiverFlag">
+        <ignore path="src/main/java/com/golradreth/randooffline/MainActivity.java" />
+    </issue>
+</lint>

@@ -30,5 +30,3 @@ android {
 dependencies {
     implementation 'org.osmdroid:osmdroid-android:6.1.20'
 }
-
-// Trigger v4.2 build after OpenStreetMap access fix.

@@ -1,1 +1,2 @@
 Build Rando Savoie v3 with interactive IGN and OSM maps.
+Run 2.

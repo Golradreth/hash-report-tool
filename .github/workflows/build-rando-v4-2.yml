@@ -1,0 +1,127 @@
+name: Build Rando Savoie v4.2
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || 'rando-savoie-v4-ui' }}
+          fetch-depth: 0
+
+      - name: Fix OpenStreetMap tile source and bump version
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          java = Path('nivolet-app-v2/app/src/main/java/com/golradreth/randooffline/MainActivity.java')
+          text = java.read_text(encoding='utf-8')
+
+          text = text.replace('import org.osmdroid.tileprovider.tilesource.TileSourceFactory;\n', '')
+
+          marker = '    private final List<Route> routes = new ArrayList<>();\n'
+          osm_source = '''    private static final OnlineTileSourceBase OPENSTREETMAP = new OnlineTileSourceBase(
+            "OpenStreetMap-Official-v2", 0, 19, 256, ".png",
+            new String[]{"https://tile.openstreetmap.org/"}, "© OpenStreetMap contributors") {
+        @Override public String getTileURLString(long index) {
+            int z = MapTileIndex.getZoom(index);
+            int x = MapTileIndex.getX(index);
+            int y = MapTileIndex.getY(index);
+            return getBaseUrl() + z + "/" + x + "/" + y + ".png";
+        }
+    };
+
+'''
+          if 'OpenStreetMap-Official-v2' not in text:
+              text = text.replace(marker, osm_source + marker, 1)
+
+          text = text.replace(
+              'config.setUserAgentValue(getPackageName() + "/4.1");',
+              'config.setUserAgentValue("RandoSavoieOffline/4.2 (+https://github.com/Golradreth/hash-report-tool)");'
+          )
+          text = text.replace(
+              'map.setTileSource(ign ? PLAN_IGN : TileSourceFactory.MAPNIK);',
+              'map.setTileSource(ign ? PLAN_IGN : OPENSTREETMAP);'
+          )
+
+          assert 'https://tile.openstreetmap.org/' in text
+          assert 'RandoSavoieOffline/4.2' in text
+          assert 'TileSourceFactory.MAPNIK' not in text
+          java.write_text(text, encoding='utf-8')
+
+          gradle = Path('nivolet-app-v2/app/build.gradle')
+          build = gradle.read_text(encoding='utf-8')
+          build = build.replace('versionCode 5', 'versionCode 6')
+          build = build.replace("versionName '4.1'", "versionName '4.2'")
+          assert 'versionCode 6' in build
+          assert "versionName '4.2'" in build
+          gradle.write_text(build, encoding='utf-8')
+          PY
+
+      - name: Persist source correction
+        shell: bash
+        run: |
+          git config user.name "OpenAI build bot"
+          git config user.email "build-bot@users.noreply.github.com"
+          git add nivolet-app-v2/app/src/main/java/com/golradreth/randooffline/MainActivity.java nivolet-app-v2/app/build.gradle
+          if ! git diff --cached --quiet; then
+            git commit -m "Fix OpenStreetMap tile access"
+            git push origin HEAD:${{ github.event.pull_request.head.ref || 'rando-savoie-v4-ui' }}
+          fi
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download official Nivolet GPX
+        shell: bash
+        run: |
+          mkdir -p nivolet-app-v2/app/src/main/assets
+          URL_1="https://carte.explore-savoie.com/download/balade/gpx/fr/58859f17-d252-4529-94b8-9c6d35710abd"
+          URL_2="https://explore.chamberymontagnes.com/fr/itineraires/la-croix-du-nivolet-depuis-le-sire/gpx"
+          curl -fL --retry 3 -A "Rando-Savoie-Android/4.2" "$URL_1" -o nivolet-app-v2/app/src/main/assets/nivolet.gpx \
+            || curl -fL --retry 3 -A "Rando-Savoie-Android/4.2" "$URL_2" -o nivolet-app-v2/app/src/main/assets/nivolet.gpx
+          grep -qi "<gpx" nivolet-app-v2/app/src/main/assets/nivolet.gpx
+
+      - name: Build and lint
+        run: gradle -p nivolet-app-v2 clean assembleDebug lintDebug --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK=nivolet-app-v2/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.golradreth.randooffline' versionCode='6' versionName='4.2'" apk-badging.txt
+          unzip -t "$APK"
+          cp "$APK" Rando-Savoie-v4.2.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v4.2
+          path: Rando-Savoie-v4.2.apk
+          if-no-files-found: error

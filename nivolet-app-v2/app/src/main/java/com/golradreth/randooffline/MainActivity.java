@@ -174,7 +174,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         tiles.mkdirs();
 
         IConfigurationProvider config = Configuration.getInstance();
-        config.setUserAgentValue(getPackageName() + "/4.0");
+        config.setUserAgentValue(getPackageName() + "/4.1");
         config.setOsmdroidBasePath(base);
         config.setOsmdroidTileCache(tiles);
         config.setTileFileSystemCacheMaxBytes(350L * 1024 * 1024);
@@ -502,12 +502,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         for (GeoPoint point : activeRoute.points) {
             points.add(new org.osmdroid.util.GeoPoint(point.lat, point.lon));
         }
-
-        routeShadow = new Polyline();
-        routeShadow.setPoints(points);
-        routeShadow.setColor(Color.argb(220, 255, 255, 255));
-        routeShadow.setWidth(dp(9));
-        map.getOverlays().add(routeShadow);
 
         routeLine = new Polyline();
         routeLine.setPoints(points);

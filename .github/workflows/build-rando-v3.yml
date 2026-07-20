@@ -44,13 +44,27 @@ jobs:
         run: |
           set +e
           gradle -p nivolet-app-v2 clean assembleDebug lintDebug --stacktrace > build.log 2>&1
-          code=$?
-          if [ $code -ne 0 ]; then
-            echo "===== FIN DU JOURNAL GRADLE ====="
-            tail -n 220 build.log
-            exit $code
-          fi
+          echo $? > build-exit.txt
           tail -n 80 build.log
+
+      - name: Upload build journal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v3-build-log
+          path: |
+            build.log
+            build-exit.txt
+          if-no-files-found: error
+
+      - name: Stop on compiler failure
+        shell: bash
+        run: |
+          code=$(cat build-exit.txt)
+          if [ "$code" != "0" ]; then
+            tail -n 220 build.log
+            exit "$code"
+          fi
 
       - name: Verify APK manifest
         run: |

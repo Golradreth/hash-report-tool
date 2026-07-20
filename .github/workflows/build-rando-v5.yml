@@ -1,0 +1,87 @@
+name: Build Rando Savoie v5
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app branch
+        uses: actions/checkout@v4
+        with:
+          ref: rando-savoie-v5-session
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download official Nivolet GPX
+        shell: bash
+        run: |
+          mkdir -p rando-v5/app/src/main/assets
+          curl -fL --retry 3 -A "Rando-Savoie-Android/5.0" \
+            "https://static.apidae-tourisme.com/filestore/objets-touristiques/plans/211/200/40093907/La%2BCroix%2Bdu%2BNivolet%2B-%2Bdepuis%2Ble%2BSire.gpx" \
+            -o rando-v5/app/src/main/assets/nivolet.gpx
+          grep -qi "<gpx" rando-v5/app/src/main/assets/nivolet.gpx
+
+      - name: Build and lint
+        shell: bash
+        run: |
+          set +e
+          gradle -p rando-v5 clean assembleDebug lintDebug --stacktrace > build-v5.log 2>&1
+          echo $? > build-v5-exit.txt
+          tail -n 160 build-v5.log
+
+      - name: Upload build journal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v5-build-log
+          path: |
+            build-v5.log
+            build-v5-exit.txt
+          if-no-files-found: error
+
+      - name: Stop on build failure
+        shell: bash
+        run: |
+          code=$(cat build-v5-exit.txt)
+          if [ "$code" != "0" ]; then
+            tail -n 300 build-v5.log
+            exit "$code"
+          fi
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK=rando-v5/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee apk-badging-v5.txt
+          grep -q "package: name='com.golradreth.randooffline' versionCode='7' versionName='5.0'" apk-badging-v5.txt
+          unzip -t "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apk-signature-v5.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-v5.txt
+          cp "$APK" Rando-Savoie-v5.apk
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v5
+          path: Rando-Savoie-v5.apk
+          if-no-files-found: error

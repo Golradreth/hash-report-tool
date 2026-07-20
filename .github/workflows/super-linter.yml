@@ -1,5 +1,7 @@
 name: Lint Code Base
 on: [push, pull_request]
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,12 +14,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   android-build:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout app branch
         uses: actions/checkout@v4
         with:
           ref: rando-savoie-v4-ui
+          fetch-depth: 0
 
       - name: Apply OpenStreetMap fix
         shell: bash
@@ -103,11 +107,14 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
           grep -q "package: name='com.golradreth.randooffline' versionCode='6' versionName='4.2'" apk-badging.txt
           unzip -t "$APK"
-          cp "$APK" Rando-Savoie-v4.2.apk
+          mkdir -p builds
+          cp "$APK" builds/Rando-Savoie-v4.2.apk
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Rando-Savoie-v4.2
-          path: Rando-Savoie-v4.2.apk
-          if-no-files-found: error
+      - name: Publish verified APK to app branch
+        shell: bash
+        run: |
+          git config user.name "OpenAI build bot"
+          git config user.email "build-bot@users.noreply.github.com"
+          git add -f builds/Rando-Savoie-v4.2.apk
+          git commit -m "Publish verified Rando Savoie v4.2 APK"
+          git push origin HEAD:rando-savoie-v4-ui

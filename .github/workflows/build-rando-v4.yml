@@ -1,0 +1,82 @@
+name: Build Rando Savoie v4
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download official Nivolet GPX
+        shell: bash
+        run: |
+          mkdir -p nivolet-app-v2/app/src/main/assets
+          URL_1="https://carte.explore-savoie.com/download/balade/gpx/fr/58859f17-d252-4529-94b8-9c6d35710abd"
+          URL_2="https://explore.chamberymontagnes.com/fr/itineraires/la-croix-du-nivolet-depuis-le-sire/gpx"
+          curl -fL --retry 3 -A "Rando-Savoie-Android/4.0" "$URL_1" -o nivolet-app-v2/app/src/main/assets/nivolet.gpx \
+            || curl -fL --retry 3 -A "Rando-Savoie-Android/4.0" "$URL_2" -o nivolet-app-v2/app/src/main/assets/nivolet.gpx
+          grep -qi "<gpx" nivolet-app-v2/app/src/main/assets/nivolet.gpx
+
+      - name: Build and lint
+        shell: bash
+        run: |
+          set +e
+          gradle -p nivolet-app-v2 clean assembleDebug lintDebug --stacktrace > build.log 2>&1
+          echo $? > build-exit.txt
+          tail -n 100 build.log
+
+      - name: Upload build journal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v4-build-log
+          path: |
+            build.log
+            build-exit.txt
+          if-no-files-found: error
+
+      - name: Stop on compiler failure
+        shell: bash
+        run: |
+          code=$(cat build-exit.txt)
+          if [ "$code" != "0" ]; then
+            tail -n 240 build.log
+            exit "$code"
+          fi
+
+      - name: Verify APK manifest
+        run: |
+          APK=nivolet-app-v2/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.golradreth.randooffline' versionCode='4' versionName='4.0'" apk-badging.txt
+          cp "$APK" Rando-Savoie-v4.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rando-Savoie-v4
+          path: Rando-Savoie-v4.apk
+          if-no-files-found: error

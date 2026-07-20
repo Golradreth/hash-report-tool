@@ -40,7 +40,17 @@ jobs:
           grep -qi "<gpx" nivolet-app-v2/app/src/main/assets/nivolet.gpx
 
       - name: Build and lint
-        run: gradle -p nivolet-app-v2 clean assembleDebug lintDebug --stacktrace
+        shell: bash
+        run: |
+          set +e
+          gradle -p nivolet-app-v2 clean assembleDebug lintDebug --stacktrace > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "===== FIN DU JOURNAL GRADLE ====="
+            tail -n 220 build.log
+            exit $code
+          fi
+          tail -n 80 build.log
 
       - name: Verify APK manifest
         run: |
